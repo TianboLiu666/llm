@@ -22,8 +22,6 @@ class Config:
     # norm_eps: float
     # drop_out: float
 
-
-# @dataclass
 class Weights:
     token_embedding_table: np.array
     rms_att_weight: np.array
@@ -65,9 +63,7 @@ class Transformer:
 
 
 def init_weight(weights: Weights, arg: Config, i: int, data: np.array, shared_weights):
-    # def read(count):
-    #     values = struct.unpack(str(count)+'f', file.read(count * 4))
-    #     return np.array(values)
+
     head_size = arg.dim // arg.n_heads
     n_layers = arg.n_layers
     weights.token_embedding_table = data[i : i + arg.vocab_size * arg.dim]
@@ -107,7 +103,7 @@ def init_weight(weights: Weights, arg: Config, i: int, data: np.array, shared_we
 
 
 def rmsnorm(x, weight):
-    # size =  len(x)
+
     ss = np.sum(x**2) / len(x) + 1e-5
     ss = 1.0 / np.sqrt(ss)
     return weight * (ss * x)
@@ -167,7 +163,6 @@ def forward(transformer: Transformer, token: int, pos: int):
     # state.x = weights.token_embedding_table[token * dim : (token + 1) * dim]
     content_row = weights.token_embedding_table[token * dim : (token + 1) * dim]
     x[:] = content_row
-    # print(state.x.shape)
 
     freq_cis_real = weights.freq_cis_real[
         pos * head_size // 2 : (pos + 1) * head_size // 2
@@ -178,26 +173,15 @@ def forward(transformer: Transformer, token: int, pos: int):
 
     for l in range(arg.n_layers):
         state.xb = rmsnorm(x, weights.rms_att_weight[l * dim : (l + 1) * dim])
-        # print('xb', state.xb.shape)
 
         state.q = np.matmul(weights.wq[l * dim * dim : (l + 1) * dim * dim].reshape(dim, dim), state.xb)
         state.k = np.matmul(weights.wk[l * dim * kv_dim : (l + 1) * dim * kv_dim].reshape(kv_dim, dim), state.xb,)
-        # print(weights.wk.shape)
-        # print('kv_dim:', kv_dim)
-        # print('dim :', dim)
-        # print(weights.wq.shape)
         state.v = np.matmul(weights.wv[l * dim * kv_dim : (l + 1) * dim * kv_dim].reshape(kv_dim, dim), state.xb,)
-        # print(state.v)
-
-        # print(state.q)
 
         # Add positonal embedding
         state.q, state.k = apply_rotary(
             state.q, state.k, freq_cis_real, freq_cis_imag, arg.n_heads, arg.n_kv_heads
         )
-        # print(state.q.shape)
-        # print(state.k.shape)
-
         # loff = l * arg.seq_len * dim
         # store key, value at this pos to kv cache
         # state.key_cache (layer, seq_len, dim)
@@ -223,7 +207,6 @@ def forward(transformer: Transformer, token: int, pos: int):
             state.q.reshape(arg.n_heads, 1, head_size), xk.transpose(0, 2, 1)
         ) / np.sqrt(head_size)
 
-        # print(scores)
         # scores += np.triu(np.full(arg.seq_len, float('-inf')))
         scores[:, :, pos+1:] = float("-inf")
 
@@ -237,16 +220,12 @@ def forward(transformer: Transformer, token: int, pos: int):
             scores @ xv
         )  # (n_heads, 1, seq_len) @ (n_heads, seq_len, head_size) ---> (n_heads, 1, head_size)
 
-        # print(state.xb.shape)
-        # print(state.xb.flatten().shape)
-
         state.xb2 = np.matmul(
             weights.wo[l * dim * dim : (l + 1) * dim * dim].reshape(dim, dim),
             state.xb.reshape(
                 dim,
             ),
         )
-        # print(state.xb2.shape)
 
         x += state.xb2  # residual connection
 
@@ -266,8 +245,7 @@ def forward(transformer: Transformer, token: int, pos: int):
         )
         # print(state.hb.shape)
         state.hb2 = np.matmul(weights.w3[l * hidden_dim * dim : (l + 1) * hidden_dim * dim].reshape(hidden_dim, dim),state.xb.reshape(dim,),)
-        # print(state.hb2)
-        # print(state.hb2.shape)
+
         state.hb *= 1.0 / (1.0 + np.exp(-state.hb))  # silu(w1(x)) * w3(x)
         state.hb *= state.hb2
 
@@ -281,15 +259,13 @@ def forward(transformer: Transformer, token: int, pos: int):
         )
 
         x += state.xb  # residual connection
-        # print(state.x)
-        # break
 
         # final rmsnorm
     x = rmsnorm(x, weights.rms_final_weight)
 
-        # Calssifier into logits
+    # Calssifier into logits
     state.logits = np.matmul(weights.wcls.reshape(arg.vocab_size, dim), x)
-    # print(state.logits)
+
 
     return state.logits
 
@@ -375,7 +351,6 @@ def print_bytes(s):
             return ord(s) - ord("A") + 10
         return ord(s) - ord("0")
 
-    # if len(s) >=6:
     if s[:3] == '<0x':
             to_print = chr(string_bytes(s[3]) * 16 + string_bytes(s[4]))
             print(to_print)
@@ -426,7 +401,6 @@ def generate(checkpoints, temperature, steps, prompt, tokenization):
     )
 
     state = RunState(**runState_init)
-    # print(state.logits)
 
     # Process the prompt, if any
     prompt_tokens = []
@@ -448,8 +422,6 @@ def generate(checkpoints, temperature, steps, prompt, tokenization):
         # Forward the transformer to get logits for the next token
         # transformer(token, pos, arg, state, weights)
         state.logits = forward(transformer=transformer, token=token, pos=pos)
-        # print(state.logits[-3:])
-        # print(state.logits.shape)
 
         if pos < len(prompt_tokens):
             # If we are still processing the input prompt, force the next prompt token
@@ -478,7 +450,6 @@ def generate(checkpoints, temperature, steps, prompt, tokenization):
             else vocab[next_token]
         )
 
-        # print(token_str, end="")
         print_bytes(token_str)
         sys.stdout.flush()
 
@@ -506,32 +477,7 @@ if __name__ == "__main__":
     parser.add_argument('--prompt', default='Dream comes true this day', help='prompt')
     parser.add_argument('--steps', type=int, default=256, help='steps')
     args = parser.parse_args()
-    # args = {
-    #     "checkpoint": "./out/stories15M.bin",
-    #     "temperature": "0.0",
-    #     "steps": "256",
-    #     "prompt": None,
-    # }
-    # checkpoints = "stories15M.bin"
-    # temperature = 0.0
-    # steps = 256
-    # prompt = "hello"
-    # # if len(sys.argv) < 2:
-    # #     print(
-    # #         "Usage: python script.py <checkpoint_file> [temperature] [steps] [prompt]")
-    # #     sys.exit(1)
 
-    # if len(sys.argv) >= 2:
-    #     checkpoints = sys.argv[1]
-
-    # if len(sys.argv) >= 3:
-    #     temperature = float(sys.argv[2])
-
-    # if len(sys.argv) >= 4:
-    #     steps = int(sys.argv[3])
-
-    # if len(sys.argv) >= 5:
-    #     prompt = sys.argv[4]
 
     generate(args.checkpoints, args.temperature, args.steps, args.prompt, args.tokenization)
     # generate(checkpoints, temperature, steps, prompt)
